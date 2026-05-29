@@ -3,7 +3,9 @@ import hashlib
 
 
 class PJLinkError(Exception):
-    pass
+    def __init__(self, msg='', code=''):
+        super().__init__(msg)
+        self.code = code
 
 
 class AuthError(PJLinkError):
@@ -66,7 +68,12 @@ class PJLinkClient:
         for cls in ('1', '2'):
             prefix = f'%{cls}{cmd}='
             if response.startswith(prefix):
-                return response[len(prefix):]
+                val = response[len(prefix):]
+                if val == 'ERRA':
+                    raise AuthError('Authentication failure')
+                if val.startswith('ERR'):
+                    raise PJLinkError(f'Command error: {val}', code=val)
+                return val
         if 'ERRA' in response:
             raise AuthError('Authentication failure')
         if 'ERR' in response:

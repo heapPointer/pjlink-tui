@@ -13,7 +13,7 @@ def get_error_status(host, password='', port=4352):
     resp = client.query('ERST')
     val = PJLinkClient.extract(resp, 'ERST')
 
-    if len(val) < 6 or 'ERR' in val:
+    if len(val) < 6:
         return None
 
     return {

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pjlink_client import PJLinkClient
+from pjlink_client import PJLinkClient, PJLinkError
 
 
 @dataclass
@@ -32,12 +32,17 @@ def _refresh_host_details(host: Host) -> None:
         try:
             PJLinkClient.extract(c.query(cmd), cmd)
             caps[key] = True
+        except PJLinkError as e:
+            if e.code in ('ERR3', 'ERR4'):
+                caps[key] = True
         except Exception:
             pass
 
     try:
-        val = PJLinkClient.extract(c.query('LAMP'), 'LAMP')
-        if val:
+        PJLinkClient.extract(c.query('LAMP'), 'LAMP')
+        caps['lamp'] = True
+    except PJLinkError as e:
+        if e.code in ('ERR3', 'ERR4'):
             caps['lamp'] = True
     except Exception:
         pass
@@ -52,6 +57,9 @@ def _refresh_host_details(host: Host) -> None:
             try:
                 PJLinkClient.extract(c.query(cmd, cls='2'), cmd)
                 caps[key] = True
+            except PJLinkError as e:
+                if e.code in ('ERR3', 'ERR4'):
+                    caps[key] = True
             except Exception:
                 pass
 
@@ -66,10 +74,10 @@ async def _probe(ip: str, sem: asyncio.Semaphore, on_found, on_progress) -> None
     async with sem:
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, 4352), timeout=1.5
+                asyncio.open_connection(ip, 4352), timeout=0.5
             )
             try:
-                data = await asyncio.wait_for(reader.readuntil(b'\r'), timeout=1.5)
+                data = await asyncio.wait_for(reader.readuntil(b'\r'), timeout=0.5)
                 banner = data.decode('ascii', errors='ignore').strip()
             finally:
                 writer.close()
@@ -79,16 +87,23 @@ async def _probe(ip: str, sem: asyncio.Semaphore, on_found, on_progress) -> None
                     pass
 
             host = Host(ip=ip, auth_required=not banner.startswith('PJLINK 0'))
-            if not host.auth_required:
-                await asyncio.to_thread(_refresh_host_details, host)
             on_found(host)
+
+            if not host.auth_required:
+                async def _enrich(h: Host = host) -> None:
+                    try:
+                        await asyncio.to_thread(_refresh_host_details, h)
+                    except Exception:
+                        pass
+                    on_found(h)
+                asyncio.create_task(_enrich())
         except Exception:
             pass
         finally:
             on_progress()
 
 
-async def scan_cidr(cidr: str, on_found, on_progress, max_workers: int = 80) -> None:
+async def scan_cidr(cidr: str, on_found, on_progress, max_workers: int = 512) -> None:
     network = ipaddress.ip_network(cidr, strict=False)
     sem = asyncio.Semaphore(max_workers)
     tasks = [

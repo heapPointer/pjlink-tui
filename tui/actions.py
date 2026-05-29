@@ -112,9 +112,9 @@ def _run_action(action_id: str, host: Host, param: str) -> str:
         case 'unfreeze':
             return str(set_freeze(h, False, pw))
         case 'mute_all':
-            return str(set_mute(h, 3, True, pw))
+            return str(set_mute(h, '3', '1', pw))
         case 'unmute_all':
-            return str(set_mute(h, 3, False, pw))
+            return str(set_mute(h, '3', '0', pw))
         case 'switch_input':
             return str(set_input(h, param.strip(), pw))
         case 'device_info':

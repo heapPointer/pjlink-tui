@@ -26,7 +26,7 @@ from textual.widgets import (
 )
 
 from scanner import Host, detect_caps_for_host, host_total, scan_cidr
-from actions import CATALOGUE, available_actions, execute
+from actions import Action, CATALOGUE, available_actions, execute
 
 
 _CAP_SHORT = {
@@ -407,17 +407,25 @@ class PJLinkScannerApp(App):
         if action is None:
             return
 
+        host = self._selected_host
+        self.run_worker(
+            self._run_action_with_param(action, host),
+            name=f'action-{host.ip}-{action.id}',
+            group='action',
+            exclusive=True,
+        )
+
+    async def _run_action_with_param(self, action: Action, host: Host) -> None:
         param = ''
         if action.needs_param:
             result = await self.push_screen_wait(ParamModal(action.needs_param))
-            if result is None:
+            if not result:
                 return
             param = result
 
-        host = self._selected_host
         self._log(f'[yellow][>] {host.ip}  {action.label}...[/yellow]')
         try:
-            output = await execute(action_id, host, param)
+            output = await execute(action.id, host, param)
             self._log(f'[green][+] {host.ip}  {action.label}:  {output}[/green]')
         except Exception as e:
             self._log(f'[red][-] {host.ip}  {action.label} failed:  {e}[/red]')
